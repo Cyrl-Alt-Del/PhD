@@ -1,0 +1,79 @@
+"""
+Toy model of 'other-regarding' choice: when I decide how to act, how much do I weigh someone else's good against my own?
+
+    score = my utility                        
+          + social weight * their utility     
+          + long-term delta                   
+
+Utilities are linear. Could do diminishing returns.
+"""
+
+from dataclasses import dataclass
+
+# How much I weight someone else's utility, by relationship / role
+SOCIAL_WEIGHT = {
+    "family":      0.9,
+    "friend":      0.7,
+    "colleague":   0.4,
+    "stranger":    0.2,
+    "competitor":  0.0,
+    "enemy":      -0.3,   # negative means their gains are my losses
+}
+
+
+@dataclass
+class Person:
+    relation: str         # social distance / role
+    values_it: float      # my guess at how much the other person values the resource
+    meet_again: float     # chance (0-1) we'll interact again
+
+
+@dataclass
+class Action:
+    name: str
+    me: float             # change for me   (e.g. -10 = I give 10 away)
+    them: float           # change for them (e.g. +10 = they receive 10)
+    ripple: float = 0.0   # knock-on effect on people/relationships I care about
+
+
+def my_utility(change, i_value_it):                 
+    return i_value_it * change
+
+
+def their_utility(change, person):                  
+    return person.values_it * change
+
+
+def long_term_delta(action, person, reciprocity=0.5):  
+    # goodwill / grudges that come back to me if we meet again
+    echo = person.meet_again * reciprocity * their_utility(action.them, person)
+    # and effects on everyone else I care about (domain of moral concern)
+    return echo + action.ripple
+
+
+def score(action, person, i_value_it):
+    return (
+        my_utility(action.me, i_value_it)
+        + SOCIAL_WEIGHT[person.relation] * their_utility(action.them, person)
+        + long_term_delta(action, person)
+    )
+
+
+def choose(actions, person, i_value_it):
+    return max(actions, key=lambda a: score(a, person, i_value_it))
+
+
+if __name__ == "__main__":
+    # I hold 10 units of a good. What do I do with it?
+    actions = [
+        Action("give it all", me=-10, them=+10),
+        Action("share half",  me=-5,  them=+5),
+        Action("keep it",     me=0,   them=0),
+        Action("take theirs", me=+5,  them=-5, ripple=-3), 
+    ]
+    i_value_it = 1.0
+
+    for relation in SOCIAL_WEIGHT:
+        p = Person(relation, values_it=1.5, meet_again=0.5)
+        best = choose(actions, p, i_value_it)
+        print(f"{relation:<11} -> {best.name:<12} (score {score(best, p, i_value_it):+.2f})")
